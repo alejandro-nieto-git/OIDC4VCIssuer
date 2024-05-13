@@ -7,13 +7,17 @@ import {
     OID4VCICredentialFormat,
 } from '@sphereon/oid4vci-common'
 import { ExpressBuilder } from "@sphereon/ssi-express-support";
+import { Jwt, Alg } from "@sphereon/oid4vci-common";
+import jose from "jose";
+import { KeyLike, KeyObject } from 'crypto';
 
 dotenv.config();
 
-// const signerCallback = async (jwt: Jwt, kid?: string): Promise<string> => {
-//     const privateKey = (await jose.generateKeyPair(Alg.ES256)).privateKey as KeyObject
-//     return new jose.SignJWT({ ...jwt.payload }).setProtectedHeader({ ...jwt.header, alg: Alg.ES256 }).sign(privateKey)
-// }
+const signerCallback = async (jwt: Jwt, kid?: string): Promise<string> => {
+    const privateKey = (process.env.PRIVATE_KEY_ISSUER as KeyLike) as KeyObject
+    return new jose.SignJWT({ ...jwt.payload }).setProtectedHeader({ ...jwt.header, alg: Alg.ES256 }).sign(privateKey)
+}
+
 
 let credentialsSupported = new CredentialSupportedBuilderV1_11()
     .withCryptographicSuitesSupported(process.env.cryptographic_suites_supported as string)
@@ -33,10 +37,9 @@ let credentialsSupported = new CredentialSupportedBuilderV1_11()
     })
     .build()
 
-
 let vcIssuer = new VcIssuerBuilder()
     .withUserPinRequired(process.env.user_pin_required as unknown as boolean)
-    .withAuthorizationServer(process.env.authorization_server as string)
+    .withDefaultCredentialOfferBaseUri(process.env.credential_issuer as string)
     .withCredentialEndpoint(process.env.credential_endpoint as string)
     .withCredentialIssuer(process.env.credential_issuer as string)
     .withIssuerDisplay({
@@ -59,8 +62,8 @@ const vcIssuerServer = new OID4VCIServer(expressSupport, {
     baseUrl: 'http://localhost:9000',
     endpointOpts: {
         tokenEndpointOpts: {
-            // accessTokenSignerCallback: signerCallback,
-            accessTokenIssuer: 'https://www.example.com',
+            accessTokenSignerCallback: signerCallback,
+            tokenPath: '/test/token',
             preAuthorizedCodeExpirationDuration: 2000,
             tokenExpiresIn: 300,
         },
@@ -68,6 +71,25 @@ const vcIssuerServer = new OID4VCIServer(expressSupport, {
 })
 
 let app = vcIssuerServer.app;
+
+app.post('/credentialOfferTitulacionDigital', async (req: any, res: any) => {
+    let createCredentialOfferResult = await vcIssuerServer.issuer.createCredentialOfferURI(
+        {
+            "grants": {
+                "urn:ietf:params:oauth:grant-type:pre-authorized_code": {
+                    "pre-authorized_code": req.body.preAuthorizedCode,
+                    "user_pin_required": true
+                }
+            },
+            "credentials": [req.body.credentialToIssue]
+        }
+    );
+
+    let createCredentialOfferResultString =  JSON.parse(JSON.stringify(createCredentialOfferResult));
+    let createCredentialOfferReturnResult = { uri: createCredentialOfferResultString.uri, pin: createCredentialOfferResultString.userPin };
+    res.json(createCredentialOfferReturnResult);
+});
+
 
 // Logging
 app.use(morgan("dev"))

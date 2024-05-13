@@ -19,9 +19,10 @@
     "@sphereon/oid4vci-issuer-server": "^0.10.2",
     "@sphereon/ssi-express-support": "^0.22.0",
     "@types/node": "^20.11.25",
-    "dotenv": "^16.4.5"
+    "dotenv": "^16.4.5",
+    "nodemon": "^3.1.0"
   },
-  "scripts": {
+ "scripts": {
     "dev": "nodemon src/server.ts",
     "dev2": "ts-node src/server.ts",
     "build": "rm -rf build/ && prettier --write src/ && tsc",

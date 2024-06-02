@@ -8,14 +8,34 @@ import {
 } from '@sphereon/oid4vci-common'
 import { ExpressBuilder } from "@sphereon/ssi-express-support";
 import { Jwt, Alg } from "@sphereon/oid4vci-common";
-import jose from "jose";
-import { KeyLike, KeyObject } from 'crypto';
+import * as jose from 'jose'
+import { createPrivateKey, KeyObject } from 'crypto';
+import { importJWK, JWK, KeyLike} from 'jose';
+import { ec as EC } from 'elliptic';
 
 dotenv.config();
 
 const signerCallback = async (jwt: Jwt, kid?: string): Promise<string> => {
-    const privateKey = (process.env.PRIVATE_KEY_ISSUER as KeyLike) as KeyObject
-    return new jose.SignJWT({ ...jwt.payload }).setProtectedHeader({ ...jwt.header, alg: Alg.ES256 }).sign(privateKey)
+    const privateKeyBuffer = Buffer.from(process.env.PRIVATE_KEY_ISSUER!.slice(2), 'hex');
+
+    const ec = new EC('secp256k1');
+    const key = ec.keyFromPrivate(privateKeyBuffer);
+
+    const pubPoint = key.getPublic();
+    const x = pubPoint.getX().toArrayLike(Buffer, 'be', 32);
+    const y = pubPoint.getY().toArrayLike(Buffer, 'be', 32);
+
+    const privateKeyJWK: JWK = {
+        kty: 'EC',
+        crv: 'secp256k1',
+        x: Buffer.from(x).toString('base64url'),
+        y: Buffer.from(y).toString('base64url'),
+        d: privateKeyBuffer.toString('base64url')
+    };
+    
+    var privateKey = await importJWK(privateKeyJWK, 'ES256K') as KeyLike;
+
+    return new jose.SignJWT({ ...jwt.payload }).setProtectedHeader({ ...jwt.header, alg: Alg.ES256K }).setIssuedAt(+new Date()).setExpirationTime('2h').sign(privateKey);
 }
 
 
@@ -63,9 +83,9 @@ const vcIssuerServer = new OID4VCIServer(expressSupport, {
     endpointOpts: {
         tokenEndpointOpts: {
             accessTokenSignerCallback: signerCallback,
-            tokenPath: '/test/token',
-            preAuthorizedCodeExpirationDuration: 2000,
-            tokenExpiresIn: 300,
+            tokenPath: '/token',
+            preAuthorizedCodeExpirationDuration: 200000,
+            tokenExpiresIn: 200000,
         },
     },
 })
@@ -96,3 +116,13 @@ app.use(morgan("dev"))
 
 expressSupport.start()
 console.log(`Emisor de titulaciones digitales desplegado en: http://localhost:${port}`)
+
+// Convert hex string to Uint8Array
+function hexToUint8Array(hex: string): Uint8Array {
+    if (hex.length % 2 !== 0) throw new Error('Invalid hex string');
+    const array = new Uint8Array(hex.length / 2);
+    for (let i = 0; i < hex.length; i += 2) {
+      array[i / 2] = parseInt(hex.substr(i, 2), 16);
+    }
+    return array;
+  }

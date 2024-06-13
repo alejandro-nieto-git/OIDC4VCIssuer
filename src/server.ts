@@ -7,11 +7,25 @@ import {
     OID4VCICredentialFormat,
 } from '@sphereon/oid4vci-common'
 import { ExpressBuilder } from "@sphereon/ssi-express-support";
-import { Jwt, Alg } from "@sphereon/oid4vci-common";
+import {
+    AccessTokenResponse,
+    Alg,
+    CredentialOfferSession,
+    CredentialSupported,
+    IssuerCredentialSubjectDisplay,
+    Jwt,
+    JWTHeader,
+    JWTPayload,
+    OpenId4VCIVersion,
+  } from '@sphereon/oid4vci-common'
 import * as jose from 'jose'
 import { createPrivateKey, KeyObject } from 'crypto';
 import { importJWK, JWK, KeyLike} from 'jose';
 import { ec as EC } from 'elliptic';
+import { DIDDocument } from 'did-resolver'
+import { MemoryStates } from '@sphereon/oid4vci-issuer/dist/state-manager'
+import { IProofPurpose, IProofType } from '@sphereon/ssi-types'
+
 
 dotenv.config();
 
@@ -57,6 +71,16 @@ let credentialsSupported = new CredentialSupportedBuilderV1_11()
     })
     .build()
 
+const stateManager = new MemoryStates<CredentialOfferSession>();
+//TODO: Change this to the actual credential to issue
+const credential = {
+    '@context': ['https://www.w3.org/2018/credentials/v1'],
+    type: [process.env.credential_supported_types_2 as string],
+    issuer: process.env.credential_supported_id as string, 
+    issuanceDate: new Date().toISOString(),
+    credentialSubject: {},
+  }
+
 let vcIssuer = new VcIssuerBuilder()
     .withUserPinRequired(process.env.user_pin_required as unknown as boolean)
     .withDefaultCredentialOfferBaseUri(process.env.credential_issuer as string)
@@ -67,8 +91,49 @@ let vcIssuer = new VcIssuerBuilder()
         locale: process.env.issuer_locale as string,
     })
     .withCredentialsSupported(credentialsSupported)
-    .withInMemoryCredentialOfferState()
+    .withCredentialOfferStateManager(stateManager)
+    .withCredentialDataSupplier(() =>
+        Promise.resolve({
+          format: 'jwt_vc_json',
+          credential,
+        }),
+      )
+    .withInMemoryCredentialOfferURIState()
     .withInMemoryCNonceState()
+    .withCredentialSignerCallback(() =>
+        Promise.resolve({
+          ...credential,
+          proof: {
+            type: IProofType.JwtProof2020,
+            jwt: 'ye.ye.ye',
+            created: new Date().toISOString(),
+            proofPurpose: IProofPurpose.assertionMethod,
+            verificationMethod: 'sdfsdfasdfasdfasdfasdfassdfasdf',
+          },
+        }),
+      )
+    .withJWTVerifyCallback((args: { jwt: string; kid?: string }) => {
+        const header = jose.decodeProtectedHeader(args.jwt)
+        const payload = jose.decodeJwt(args.jwt)
+
+        const kid = header.kid ?? (payload.kid as string).toString()
+        const did = kid!.split('#')[0]
+        const didDocument: DIDDocument = {
+            '@context': 'https://www.w3.org/ns/did/v1',
+            id: did,
+        }
+        const alg = header.alg ?? 'ES256k'
+        return Promise.resolve({
+          alg,
+          kid,
+          did,
+          didDocument,
+          jwt: {
+            header: header as JWTHeader,
+            payload: payload as JWTPayload,
+          },
+        })
+      })
     .build()
 
 let port = 9000;

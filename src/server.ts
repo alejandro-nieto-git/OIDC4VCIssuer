@@ -176,7 +176,17 @@ const vcIssuerServer = new OID4VCIServer(expressSupport, {
 let app = vcIssuerServer.app;
 
 app.post("/credentialOfferTitulacionDigital", async (req: any, res: any) => {
-  let titulacion = req.body.titulacion;
+  let titulacion = {
+    codigoTitulacion: "1", 
+    nombreTitulacion: "Ingeniería Informática",
+    tipo: "Grado",
+    promocion: "2017",
+    notaMedia: "8.5",
+    fechaHoraEmision: "2021-07-12T12:00:00Z",
+    revocada: false,
+    decretoLey: "Real Decreto 123/2017",
+    descripcionRegistroFisico: "Registro Físico",
+  };
   const credentialDefinition: JsonLdIssuerCredentialDefinition = {
     "@context": ["https://www.w3.org/2018/credentials/v1"],
     types: ["VerifiableCredential", "TitulacionDigital"],

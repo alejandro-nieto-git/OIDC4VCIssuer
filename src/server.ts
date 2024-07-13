@@ -28,6 +28,7 @@ import { MemoryStates } from "@sphereon/oid4vci-issuer/dist/state-manager";
 import { IProofPurpose, IProofType } from "@sphereon/ssi-types";
 import { NameAndLocale } from "@sphereon/oid4vci-common/lib/types/Generic.types";
 import { JsonLdIssuerCredentialDefinition } from "@sphereon/oid4vci-common/lib/types/Generic.types";
+import { TOKEN_PATH } from "./utils/const";
 
 dotenv.config();
 
@@ -90,7 +91,6 @@ let credentialsSupported = new CredentialSupportedBuilderV1_11()
   .build();
 
 const stateManager = new MemoryStates<CredentialOfferSession>();
-//TODO: Change this to the actual credential to issue
 const credential = {
   "@context": ["https://www.w3.org/2018/credentials/v1"],
   type: [process.env.credential_supported_types_2 as string],
@@ -162,11 +162,11 @@ let expressSupport = ExpressBuilder.fromServerOpts({
 }).build({ startListening: false });
 const vcIssuerServer = new OID4VCIServer(expressSupport, {
   issuer: vcIssuer,
-  baseUrl: "http://localhost:9000",
+  baseUrl: process.env.baseUrl as string,
   endpointOpts: {
     tokenEndpointOpts: {
       accessTokenSignerCallback: signerCallback,
-      tokenPath: "/token",
+      tokenPath: TOKEN_PATH, 
       preAuthorizedCodeExpirationDuration: 200000,
       tokenExpiresIn: 200000,
     },
@@ -176,6 +176,53 @@ const vcIssuerServer = new OID4VCIServer(expressSupport, {
 let app = vcIssuerServer.app;
 
 app.post("/credentialOfferTitulacionDigital", async (req: any, res: any) => {
+
+
+  let createCredentialOfferResult = await requestCredentialIssuance(req.body.idTitulacionAEmitir, req.body.preAuthorizedCode);
+
+  let createCredentialOfferResultString = JSON.parse(
+    JSON.stringify(createCredentialOfferResult)
+  );
+  let createCredentialOfferReturnResult = {
+    uri: createCredentialOfferResultString.uri,
+    pin: createCredentialOfferResultString.userPin,
+  };
+  res.json(createCredentialOfferReturnResult);
+});
+
+// Logging
+app.use(morgan("dev"));
+
+expressSupport.start();
+console.log(
+  `Emisor de titulaciones digitales desplegado en: ${process.env.ISSUER_URL}`
+);
+
+/**
+ * Converts a hexadecimal string to a Uint8Array.
+ * 
+ * @param hex The hexadecimal string to convert.
+ * @returns The Uint8Array representation of the hexadecimal string.
+ * @throws Error if the input hex string is invalid.
+ */
+function hexToUint8Array(hex: string): Uint8Array {
+  if (hex.length % 2 !== 0) throw new Error("Invalid hex string");
+  const array = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2) {
+    array[i / 2] = parseInt(hex.substr(i, 2), 16);
+  }
+  return array;
+}
+
+/**
+ * Requests the issuance of a titulacion digital credential type.
+ * 
+ * @param idTitulacionAEmitir - The ID of the credential to be issued.
+ * @param preAuthorizedCode - The pre-authorized code for authentication.
+ * @returns A promise that resolves to the result of creating the credential offer.
+ */
+async function requestCredentialIssuance(idTitulacionAEmitir: string, preAuthorizedCode: string) {
+  //TODO: use idTitulacionAEmitir at the body to filter the user's titulaciones from the UVA backend
   let titulacion = {
     codigoTitulacion: "1", 
     nombreTitulacion: "Ingeniería Informática",
@@ -187,6 +234,8 @@ app.post("/credentialOfferTitulacionDigital", async (req: any, res: any) => {
     decretoLey: "Real Decreto 123/2017",
     descripcionRegistroFisico: "Registro Físico",
   };
+
+  //TODO: extract info from titulacion and user whenever authentication is implemented
   const credentialDefinition: JsonLdIssuerCredentialDefinition = {
     "@context": ["https://www.w3.org/2018/credentials/v1"],
     types: ["VerifiableCredential", "TitulacionDigital"],
@@ -240,38 +289,14 @@ app.post("/credentialOfferTitulacionDigital", async (req: any, res: any) => {
     await vcIssuerServer.issuer.createCredentialOfferURI({
       grants: {
         "urn:ietf:params:oauth:grant-type:pre-authorized_code": {
-          "pre-authorized_code": req.body.preAuthorizedCode,
+          "pre-authorized_code": preAuthorizedCode,
           user_pin_required: true,
         },
       },
-      credentials: [req.body.credentialToIssue],
+      credentials: ["TitulacionDigital"],
       credentialDefinition: credentialDefinition,
     });
 
-  let createCredentialOfferResultString = JSON.parse(
-    JSON.stringify(createCredentialOfferResult)
-  );
-  let createCredentialOfferReturnResult = {
-    uri: createCredentialOfferResultString.uri,
-    pin: createCredentialOfferResultString.userPin,
-  };
-  res.json(createCredentialOfferReturnResult);
-});
-
-// Logging
-app.use(morgan("dev"));
-
-expressSupport.start();
-console.log(
-  `Emisor de titulaciones digitales desplegado en: http://localhost:${port}`
-);
-
-// Convert hex string to Uint8Array
-function hexToUint8Array(hex: string): Uint8Array {
-  if (hex.length % 2 !== 0) throw new Error("Invalid hex string");
-  const array = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < hex.length; i += 2) {
-    array[i / 2] = parseInt(hex.substr(i, 2), 16);
-  }
-  return array;
+    return createCredentialOfferResult;
 }
+

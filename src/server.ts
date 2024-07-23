@@ -176,8 +176,6 @@ const vcIssuerServer = new OID4VCIServer(expressSupport, {
 let app = vcIssuerServer.app;
 
 app.post("/credentialOfferTitulacionDigital", async (req: any, res: any) => {
-
-
   let createCredentialOfferResult = await requestCredentialIssuance(req.body.idTitulacionAEmitir, req.body.preAuthorizedCode);
 
   let createCredentialOfferResultString = JSON.parse(

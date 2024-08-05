@@ -19,6 +19,7 @@
     "@sphereon/oid4vci-issuer-server": "^0.10.2",
     "@sphereon/ssi-express-support": "^0.22.0",
     "@types/node": "^20.11.25",
+    "cors": "^2.8.5",
     "did-resolver": "^4.1.0",
     "dotenv": "^16.4.5",
     "elliptic": "^6.5.5",
@@ -31,6 +32,7 @@
     "clean": "rm -rf build/"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.17",
     "@types/elliptic": "^6.4.18"
   }
 }

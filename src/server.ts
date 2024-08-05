@@ -29,6 +29,7 @@ import { IProofPurpose, IProofType } from "@sphereon/ssi-types";
 import { NameAndLocale } from "@sphereon/oid4vci-common/lib/types/Generic.types";
 import { JsonLdIssuerCredentialDefinition } from "@sphereon/oid4vci-common/lib/types/Generic.types";
 import { TOKEN_PATH } from "./utils/const";
+import cors from 'cors';
 
 dotenv.config();
 
@@ -175,6 +176,10 @@ const vcIssuerServer = new OID4VCIServer(expressSupport, {
 
 let app = vcIssuerServer.app;
 
+app.use(cors({
+  origin: 'http://localhost:3000'
+}));
+
 app.post("/credentialOfferTitulacionDigital", async (req: any, res: any) => {
   let createCredentialOfferResult = await requestCredentialIssuance(req.body.idTitulacionAEmitir, req.body.preAuthorizedCode);
 
@@ -190,6 +195,8 @@ app.post("/credentialOfferTitulacionDigital", async (req: any, res: any) => {
 
 // Logging
 app.use(morgan("dev"));
+
+
 
 expressSupport.start();
 console.log(
@@ -221,12 +228,13 @@ function hexToUint8Array(hex: string): Uint8Array {
  */
 async function requestCredentialIssuance(idTitulacionAEmitir: string, preAuthorizedCode: string) {
   //TODO: use idTitulacionAEmitir at the body to filter the user's titulaciones from the UVA backend
+  //This is better than simply letting the client select the info to be issued in the credential since we can't trust the client
   let titulacion = {
-    codigoTitulacion: "1", 
+    codigoTitulacion: "83639", 
     nombreTitulacion: "Ingeniería Informática",
     tipo: "Grado",
     promocion: "2017",
-    notaMedia: "8.5",
+    notaMedia: "8.6",
     fechaHoraEmision: "2021-07-12T12:00:00Z",
     revocada: false,
     decretoLey: "Real Decreto 123/2017",

@@ -177,7 +177,9 @@ const vcIssuerServer = new OID4VCIServer(expressSupport, {
 let app = vcIssuerServer.app;
 
 app.use(cors({
-  origin: 'http://localhost:3000'
+  origin: 'http://localhost:3000',
+  methods: ['GET', 'POST', 'OPTIONS'], // Specify allowed methods
+  allowedHeaders: ['Content-Type', 'Authorization'], // Specify allowed headers
 }));
 
 app.post("/credentialOfferTitulacionDigital", async (req: any, res: any) => {

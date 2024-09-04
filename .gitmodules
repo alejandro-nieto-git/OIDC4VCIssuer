@@ -1,0 +1,3 @@
+[submodule "src/titulacion-digital-model"]
+	path = src/titulacion-digital-model
+	url = git@github.com:alejandro-nieto-git/titulacion-digital-model.git

@@ -1,6 +1,7 @@
+import dotenv from 'dotenv';
+dotenv.config();
 const express = require("express");
 const morgan = require("morgan");
-import dotenv from "dotenv";
 import { OID4VCIServer } from "@sphereon/oid4vci-issuer-server";
 import {
   CredentialSupportedBuilderV1_11,

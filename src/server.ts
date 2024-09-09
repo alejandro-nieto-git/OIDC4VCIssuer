@@ -31,8 +31,15 @@ import { NameAndLocale } from "@sphereon/oid4vci-common/lib/types/Generic.types"
 import { JsonLdIssuerCredentialDefinition } from "@sphereon/oid4vci-common/lib/types/Generic.types";
 import { TOKEN_PATH } from "./utils/const";
 import cors from 'cors';
+import { EthrDID } from 'ethr-did'
+import { Issuer, createVerifiableCredentialJwt } from 'did-jwt-vc'
 
 dotenv.config();
+
+const issuer = new EthrDID({
+  identifier: '0x89bd0B47C4302435aA1bb2f621a447c34420B195',
+  privateKey: process.env.PRIVATE_KEY_ISSUER, 
+}) as Issuer
 
 const signerCallback = async (jwt: Jwt, kid?: string): Promise<string> => {
   const privateKeyBuffer = Buffer.from(
@@ -95,7 +102,7 @@ let credentialsSupported = new CredentialSupportedBuilderV1_11()
 const stateManager = new MemoryStates<CredentialOfferSession>();
 const credential = {
   "@context": ["https://www.w3.org/2018/credentials/v1"],
-  type: [process.env.credential_supported_types_2 as string],
+  type: [process.env.credential_supported_types_1 as string, process.env.credential_supported_types_2 as string],
   issuer: process.env.credential_supported_id as string,
   issuanceDate: new Date().toISOString(),
   credentialSubject: {},
@@ -120,15 +127,15 @@ let vcIssuer = new VcIssuerBuilder()
   )
   .withInMemoryCredentialOfferURIState()
   .withInMemoryCNonceState()
-  .withCredentialSignerCallback(() =>
+  .withCredentialSignerCallback(async () =>
     Promise.resolve({
       ...credential,
       proof: {
         type: IProofType.JwtProof2020,
-        jwt: "ye.ye.ye",
+        jwt: await createVerifiableCredentialJwt(credential, issuer),
         created: new Date().toISOString(),
         proofPurpose: IProofPurpose.assertionMethod,
-        verificationMethod: "sdfsdfasdfasdfasdfasdfassdfasdf",
+        verificationMethod: process.env.credential_supported_id + "#key-1",
       },
     })
   )

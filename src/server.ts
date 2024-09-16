@@ -33,6 +33,9 @@ import { TOKEN_PATH } from "./utils/const";
 import cors from 'cors';
 import { EthrDID } from 'ethr-did'
 import { Issuer, createVerifiableCredentialJwt } from 'did-jwt-vc'
+import { TitulacionDAO } from './titulacion-digital-model/src/persistence/titulacionDAO';
+import { ObjectId } from 'mongodb';
+import { TitulacionCredential } from './titulacion-digital-model/src/model/titulacion';
 
 dotenv.config();
 
@@ -186,7 +189,7 @@ let app = vcIssuerServer.app;
 
 app.use(cors({
   origin: 'http://localhost:3000',
-  methods: ['GET', 'POST', 'OPTIONS'], // Specify allowed methods
+  methods: ['GET', 'POST', 'PUT', 'OPTIONS'], // Specify allowed methods
   allowedHeaders: ['Content-Type', 'Authorization'], // Specify allowed headers
 }));
 
@@ -201,6 +204,47 @@ app.post("/credentialOfferTitulacionDigital", async (req: any, res: any) => {
     pin: createCredentialOfferResultString.userPin,
   };
   res.json(createCredentialOfferReturnResult);
+});
+
+
+app.get("/titulacion", async (req: any, res: any) => {
+    const { id } = req.query;
+
+    const filter: any = {};
+    if (id) {
+      filter._id = new ObjectId(id);
+    }
+
+    const titulaciones = await TitulacionDAO.findTitulaciones(filter);
+
+    res.json(titulaciones);
+});
+
+
+app.get("/titulacion/:id", async (req: any, res: any) => {
+  const { id } = req.params; 
+  const objectId = new ObjectId(id); 
+
+  const titulacion = await TitulacionDAO.findTitulaciones({ _id: objectId });
+
+  if (titulacion.length === 0) {
+    return res.status(404).json({ message: 'Titulacion not found' });
+  }
+
+  res.json(titulacion[0]);
+});
+
+
+app.put("/titulacion/:id", async (req: any, res: any) => {
+    const { id } = req.params;
+    const update: Partial<TitulacionCredential> = req.body;
+    const result = await TitulacionDAO.updateTitulacion(id, update);
+
+    if (result.modifiedCount === 0) {
+      return res.status(404).json({ error: "Credential not found or no changes made." });
+    }
+
+    res.json({ message: "Credential updated successfully" });
 });
 
 // Logging

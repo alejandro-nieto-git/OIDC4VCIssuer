@@ -36,6 +36,7 @@ import { Issuer, createVerifiableCredentialJwt } from 'did-jwt-vc'
 import { TitulacionDAO } from './titulacion-digital-model/src/persistence/titulacionDAO';
 import { ObjectId } from 'mongodb';
 import { TitulacionCredential } from './titulacion-digital-model/src/model/titulacion';
+import { fetchTitulacionesFromUVa } from './utils/func';
 
 dotenv.config();
 
@@ -221,6 +222,11 @@ app.get("/titulacion", async (req: any, res: any) => {
 });
 
 
+app.get("/titulacionFisicaUVa", async (req: any, res: any) => {
+  res.json(fetchTitulacionesFromUVa());
+});
+
+
 app.get("/titulacion/:id", async (req: any, res: any) => {
   const { id } = req.params; 
   const objectId = new ObjectId(id); 
@@ -283,17 +289,9 @@ function hexToUint8Array(hex: string): Uint8Array {
 async function requestCredentialIssuance(idTitulacionAEmitir: string, preAuthorizedCode: string) {
   //TODO: use idTitulacionAEmitir at the body to filter the user's titulaciones from the UVA backend
   //This is better than simply letting the client select the info to be issued in the credential since we can't trust the client
-  let titulacion = {
-    codigoTitulacion: "83639", 
-    nombreTitulacion: "Ingeniería Informática",
-    tipo: "Grado",
-    promocion: "2017",
-    notaMedia: "8.6",
-    fechaHoraEmision: "2021-07-12T12:00:00Z",
-    revocada: false,
-    decretoLey: "Real Decreto 123/2017",
-    descripcionRegistroFisico: "Registro Físico",
-  };
+  let titulaciones = fetchTitulacionesFromUVa();
+  let titulacionesFiltradas = titulaciones.filter(titulacion => titulacion.codigoTitulacion === idTitulacionAEmitir);
+  let titulacion = titulacionesFiltradas[0];
 
   //TODO: extract info from titulacion and user whenever authentication is implemented
   const credentialDefinition: JsonLdIssuerCredentialDefinition = {
@@ -336,7 +334,7 @@ async function requestCredentialIssuance(idTitulacionAEmitir: string, preAuthori
             promocion: titulacion.promocion,
             notaMedia: titulacion.notaMedia,
             fechaHoraEmision: titulacion.fechaHoraEmision,
-            revocada: titulacion.revocada,
+            revocada: false,
             decretoLey: titulacion.decretoLey,
             descripcionRegistroFisico: titulacion.descripcionRegistroFisico,
           },

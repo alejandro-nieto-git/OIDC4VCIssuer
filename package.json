@@ -24,6 +24,7 @@
     "did-resolver": "^4.1.0",
     "dotenv": "^16.4.5",
     "elliptic": "^6.5.5",
+    "ethers": "^6.13.2",
     "ethr-did": "^2.1.2",
     "mongodb": "^6.8.0",
     "nodemon": "^3.1.0"

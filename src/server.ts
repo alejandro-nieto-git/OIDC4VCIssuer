@@ -36,12 +36,17 @@ import { Issuer, createVerifiableCredentialJwt } from 'did-jwt-vc'
 import { TitulacionDAO } from './titulacion-digital-model/src/persistence/titulacionDAO';
 import { ObjectId } from 'mongodb';
 import { TitulacionCredential } from './titulacion-digital-model/src/model/titulacion';
-import { fetchTitulacionesFromUVa } from './utils/func';
+import { fetchTitulacionesFromUVa, hashWithPredefinedSalt } from './utils/func';
+import { ethers } from "ethers";
+
+
+
+
 
 dotenv.config();
 
 const issuer = new EthrDID({
-  identifier: '0x89bd0B47C4302435aA1bb2f621a447c34420B195',
+  identifier: process.env.UVA_ETH_ACCOUNT!,
   privateKey: process.env.PRIVATE_KEY_ISSUER, 
 }) as Issuer
 
@@ -86,7 +91,7 @@ let credentialsSupported = new CredentialSupportedBuilderV1_11()
     process.env
       .credential_supported_format as unknown as OID4VCICredentialFormat
   )
-  .withId(process.env.credential_supported_id as string)
+  .withId("did:ethr:" + process.env.UVA_ETH_ACCOUNT?.split("0x") as string)
   .withTypes([
     process.env.credential_supported_types_1 as string,
     process.env.credential_supported_types_2 as string,
@@ -190,7 +195,7 @@ let app = vcIssuerServer.app;
 
 app.use(cors({
   origin: 'http://localhost:3000',
-  methods: ['GET', 'POST', 'PUT', 'OPTIONS'], // Specify allowed methods
+  methods: ['GET', 'POST', 'PUT', 'OPTIONS', 'DELETE'], // Specify allowed methods
   allowedHeaders: ['Content-Type', 'Authorization'], // Specify allowed headers
 }));
 
@@ -208,7 +213,7 @@ app.post("/credentialOfferTitulacionDigital", async (req: any, res: any) => {
 });
 
 
-app.get("/titulacion", async (req: any, res: any) => {
+app.get("/titulaciones", async (req: any, res: any) => {
     const { id } = req.query;
 
     const filter: any = {};
@@ -222,12 +227,12 @@ app.get("/titulacion", async (req: any, res: any) => {
 });
 
 
-app.get("/titulacionFisicaUVa", async (req: any, res: any) => {
+app.get("/titulacionesFisicasUVa", async (req: any, res: any) => {
   res.json(fetchTitulacionesFromUVa());
 });
 
 
-app.get("/titulacion/:id", async (req: any, res: any) => {
+app.get("/titulaciones/:id", async (req: any, res: any) => {
   const { id } = req.params; 
   const objectId = new ObjectId(id); 
 
@@ -241,7 +246,7 @@ app.get("/titulacion/:id", async (req: any, res: any) => {
 });
 
 
-app.put("/titulacion/:id", async (req: any, res: any) => {
+app.put("/titulaciones/:id", async (req: any, res: any) => {
     const { id } = req.params;
     const update: Partial<TitulacionCredential> = req.body;
     const result = await TitulacionDAO.updateTitulacion(id, update);
@@ -251,6 +256,26 @@ app.put("/titulacion/:id", async (req: any, res: any) => {
     }
 
     res.json({ message: "Credential updated successfully" });
+});
+
+
+
+app.delete("/titulaciones/:id", async (req: any, res: any) => {
+    const { id } = req.params; 
+    const objectId = new ObjectId(id); 
+    const titulacion = await TitulacionDAO.findTitulaciones({ _id: objectId });
+
+    let hashedObject = hashWithPredefinedSalt(JSON.stringify(titulacion));
+
+    const provider = new ethers.JsonRpcProvider(process.env.NODE_RPC_ADDRESS); // Change URL if using another network
+    const wallet = new ethers.Wallet(process.env.PRIVATE_KEY_ISSUER!, provider);
+    const revokationRegistryContract = new ethers.Contract(process.env.TITULACION_DIGITAL_REVOCATION_REGISTRY_ADDRESS!, process.env.TITULACION_DIGITAL_REVOCATION_REGISTRY_ABI!, wallet);
+    revokationRegistryContract.revokeTitulacion(hashedObject);
+
+    console.log('Type of formattedValue:', typeof hashedObject);
+    console.log('Value of formattedValue:', hashedObject);
+
+    res.json({ message: "Credential revoked successfully: " + await revokationRegistryContract.isRevoked(hashedObject) });
 });
 
 // Logging

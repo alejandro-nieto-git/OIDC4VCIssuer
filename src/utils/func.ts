@@ -1,3 +1,5 @@
+import { createHash } from 'crypto';
+
 export function fetchTitulacionesFromUVa() {
     //TODO: connect to the uva api
     return [
@@ -36,4 +38,13 @@ export function fetchTitulacionesFromUVa() {
           'promocion': '2020',
         },
       ]
+}
+
+export function hashWithPredefinedSalt(stringObject: any): string{
+    const salt = "uva";
+    const dataToHash = stringObject + salt;
+  
+    const hash = createHash('sha256').update(dataToHash).digest();
+
+    return '0x' + hash.toString('hex'); 
 }

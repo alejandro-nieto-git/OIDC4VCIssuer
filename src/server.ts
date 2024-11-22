@@ -265,17 +265,29 @@ app.delete("/titulaciones/:id", async (req: any, res: any) => {
     const objectId = new ObjectId(id); 
     const titulacion = await TitulacionDAO.findTitulaciones({ _id: objectId });
 
-    let hashedObject = hashWithPredefinedSalt(JSON.stringify(titulacion));
+    let noTypeTitulacion = titulacion[0] as any;
+    delete noTypeTitulacion._id;
+    delete noTypeTitulacion.issuer;
+    delete noTypeTitulacion.proof;
+   try {
+     let hashedObject = hashWithPredefinedSalt(JSON.stringify(noTypeTitulacion));
+     const provider = new ethers.JsonRpcProvider(process.env.NODE_RPC_ADDRESS); // Change URL if using another network
+     const wallet = new ethers.Wallet(process.env.PRIVATE_KEY_ISSUER!, provider);
+     const revokationRegistryContract = new ethers.Contract(process.env.TITULACION_DIGITAL_REVOCATION_REGISTRY_ADDRESS!, process.env.TITULACION_DIGITAL_REVOCATION_REGISTRY_ABI!, wallet);
+     let tx;
+     if (!(await revokationRegistryContract.isRevoked(hashedObject))){
+      tx = await revokationRegistryContract.revokeTitulacion(hashedObject);
+      await tx.wait();
+     }
+     console.log('Type of formattedValue:', typeof hashedObject);
+     console.log('Value of formattedValue:', hashedObject);
+     console.log('Titulación is now on revokation status:', await revokationRegistryContract.isRevoked(hashedObject));
 
-    const provider = new ethers.JsonRpcProvider(process.env.NODE_RPC_ADDRESS); // Change URL if using another network
-    const wallet = new ethers.Wallet(process.env.PRIVATE_KEY_ISSUER!, provider);
-    const revokationRegistryContract = new ethers.Contract(process.env.TITULACION_DIGITAL_REVOCATION_REGISTRY_ADDRESS!, process.env.TITULACION_DIGITAL_REVOCATION_REGISTRY_ABI!, wallet);
-    revokationRegistryContract.revokeTitulacion(hashedObject);
-
-    console.log('Type of formattedValue:', typeof hashedObject);
-    console.log('Value of formattedValue:', hashedObject);
-
-    res.json({ message: "Credential revoked successfully: " + await revokationRegistryContract.isRevoked(hashedObject) });
+     res.json({ message: "Credential revoked successfully: " + await revokationRegistryContract.isRevoked(hashedObject) });
+   } catch (error) {
+      console.log(error);
+      res.status(500).send("Blockchain connection error. Please retry.");
+   }
 });
 
 // Logging

@@ -109,7 +109,7 @@ let credentialsSupported = new CredentialSupportedBuilderV1_11()
   .build();
 
 const stateManager = new MemoryStates<CredentialOfferSession>();
-const credential = {
+let credential = {
   "@context": ["https://www.w3.org/2018/credentials/v1"],
   type: [process.env.credential_supported_types_1 as string, process.env.credential_supported_types_2 as string],
   issuer: process.env.credential_supported_id as string,
@@ -200,6 +200,7 @@ app.use(cors({
 }));
 
 app.post("/credentialOfferTitulacionDigital", async (req: any, res: any) => {
+  credential.issuanceDate = new Date().toISOString();
   let createCredentialOfferResult = await requestCredentialIssuance(req.body.idTitulacionAEmitir, req.body.preAuthorizedCode);
 
   let createCredentialOfferResultString = JSON.parse(

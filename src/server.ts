@@ -1,6 +1,7 @@
+import dotenv from 'dotenv';
+dotenv.config();
 const express = require("express");
 const morgan = require("morgan");
-import dotenv from "dotenv";
 import { OID4VCIServer } from "@sphereon/oid4vci-issuer-server";
 import {
   CredentialSupportedBuilderV1_11,
@@ -30,8 +31,24 @@ import { NameAndLocale } from "@sphereon/oid4vci-common/lib/types/Generic.types"
 import { JsonLdIssuerCredentialDefinition } from "@sphereon/oid4vci-common/lib/types/Generic.types";
 import { TOKEN_PATH } from "./utils/const";
 import cors from 'cors';
+import { EthrDID } from 'ethr-did'
+import { Issuer, createVerifiableCredentialJwt } from 'did-jwt-vc'
+import { TitulacionDAO } from './titulacion-digital-model/src/persistence/titulacionDAO';
+import { ObjectId } from 'mongodb';
+import { TitulacionCredential } from './titulacion-digital-model/src/model/titulacion';
+import { fetchTitulacionesFromUVa, hashWithPredefinedSalt } from './utils/func';
+import { ethers } from "ethers";
+
+
+
+
 
 dotenv.config();
+
+const issuer = new EthrDID({
+  identifier: process.env.UVA_ETH_ACCOUNT!,
+  privateKey: process.env.PRIVATE_KEY_ISSUER, 
+}) as Issuer
 
 const signerCallback = async (jwt: Jwt, kid?: string): Promise<string> => {
   const privateKeyBuffer = Buffer.from(
@@ -74,7 +91,7 @@ let credentialsSupported = new CredentialSupportedBuilderV1_11()
     process.env
       .credential_supported_format as unknown as OID4VCICredentialFormat
   )
-  .withId(process.env.credential_supported_id as string)
+  .withId("did:ethr:" + process.env.UVA_ETH_ACCOUNT?.split("0x") as string)
   .withTypes([
     process.env.credential_supported_types_1 as string,
     process.env.credential_supported_types_2 as string,
@@ -92,9 +109,9 @@ let credentialsSupported = new CredentialSupportedBuilderV1_11()
   .build();
 
 const stateManager = new MemoryStates<CredentialOfferSession>();
-const credential = {
+let credential = {
   "@context": ["https://www.w3.org/2018/credentials/v1"],
-  type: [process.env.credential_supported_types_2 as string],
+  type: [process.env.credential_supported_types_1 as string, process.env.credential_supported_types_2 as string],
   issuer: process.env.credential_supported_id as string,
   issuanceDate: new Date().toISOString(),
   credentialSubject: {},
@@ -119,15 +136,15 @@ let vcIssuer = new VcIssuerBuilder()
   )
   .withInMemoryCredentialOfferURIState()
   .withInMemoryCNonceState()
-  .withCredentialSignerCallback(() =>
+  .withCredentialSignerCallback(async () =>
     Promise.resolve({
       ...credential,
       proof: {
         type: IProofType.JwtProof2020,
-        jwt: "ye.ye.ye",
+        jwt: await createVerifiableCredentialJwt(credential, issuer),
         created: new Date().toISOString(),
         proofPurpose: IProofPurpose.assertionMethod,
-        verificationMethod: "sdfsdfasdfasdfasdfasdfassdfasdf",
+        verificationMethod: process.env.credential_supported_id + "#key-1",
       },
     })
   )
@@ -177,10 +194,13 @@ const vcIssuerServer = new OID4VCIServer(expressSupport, {
 let app = vcIssuerServer.app;
 
 app.use(cors({
-  origin: 'http://localhost:3000'
+  origin: 'http://localhost:3000',
+  methods: ['GET', 'POST', 'PUT', 'OPTIONS', 'DELETE'], // Specify allowed methods
+  allowedHeaders: ['Content-Type', 'Authorization'], // Specify allowed headers
 }));
 
 app.post("/credentialOfferTitulacionDigital", async (req: any, res: any) => {
+  credential.issuanceDate = new Date().toISOString();
   let createCredentialOfferResult = await requestCredentialIssuance(req.body.idTitulacionAEmitir, req.body.preAuthorizedCode);
 
   let createCredentialOfferResultString = JSON.parse(
@@ -191,6 +211,84 @@ app.post("/credentialOfferTitulacionDigital", async (req: any, res: any) => {
     pin: createCredentialOfferResultString.userPin,
   };
   res.json(createCredentialOfferReturnResult);
+});
+
+
+app.get("/titulaciones", async (req: any, res: any) => {
+    const { id } = req.query;
+
+    const filter: any = {};
+    if (id) {
+      filter._id = new ObjectId(id);
+    }
+
+    const titulaciones = await TitulacionDAO.findTitulaciones(filter);
+
+    res.json(titulaciones);
+});
+
+
+app.get("/titulacionesFisicasUVa", async (req: any, res: any) => {
+  res.json(fetchTitulacionesFromUVa());
+});
+
+
+app.get("/titulaciones/:id", async (req: any, res: any) => {
+  const { id } = req.params; 
+  const objectId = new ObjectId(id); 
+
+  const titulacion = await TitulacionDAO.findTitulaciones({ _id: objectId });
+
+  if (titulacion.length === 0) {
+    return res.status(404).json({ message: 'Titulacion not found' });
+  }
+
+  res.json(titulacion[0]);
+});
+
+
+app.put("/titulaciones/:id", async (req: any, res: any) => {
+    const { id } = req.params;
+    const update: Partial<TitulacionCredential> = req.body;
+    const result = await TitulacionDAO.updateTitulacion(id, update);
+
+    if (result.modifiedCount === 0) {
+      return res.status(404).json({ error: "Credential not found or no changes made." });
+    }
+
+    res.json({ message: "Credential updated successfully" });
+});
+
+
+
+app.delete("/titulaciones/:id", async (req: any, res: any) => {
+    const { id } = req.params; 
+    const objectId = new ObjectId(id); 
+    const titulacion = await TitulacionDAO.findTitulaciones({ _id: objectId });
+
+    let noTypeTitulacion = titulacion[0] as any;
+    delete noTypeTitulacion._id;
+    delete noTypeTitulacion.issuer;
+    delete noTypeTitulacion.proof;
+   try {
+     let hashedObject = hashWithPredefinedSalt(JSON.stringify(noTypeTitulacion));
+     const provider = new ethers.JsonRpcProvider(process.env.NODE_RPC_ADDRESS); // Change URL if using another network
+     const wallet = new ethers.Wallet(process.env.PRIVATE_KEY_ISSUER!, provider);
+     const revokationRegistryContract = new ethers.Contract(process.env.TITULACION_DIGITAL_REVOCATION_REGISTRY_ADDRESS!, process.env.TITULACION_DIGITAL_REVOCATION_REGISTRY_ABI!, wallet);
+     let tx;
+     if (!(await revokationRegistryContract.isRevoked(hashedObject))){
+      tx = await revokationRegistryContract.revokeTitulacion(hashedObject);
+      await tx.wait();
+     }
+     console.log('Type of formattedValue:', typeof hashedObject);
+     console.log('Value of formattedValue:', hashedObject);
+     console.log('Titulación is now on revokation status:', await revokationRegistryContract.isRevoked(hashedObject));
+
+     res.json({ message: "Credential revoked successfully: " + await revokationRegistryContract.isRevoked(hashedObject) });
+   } catch (error) {
+      console.log(error);
+      res.status(500).send("Blockchain connection error. Please retry.");
+   }
 });
 
 // Logging
@@ -229,17 +327,9 @@ function hexToUint8Array(hex: string): Uint8Array {
 async function requestCredentialIssuance(idTitulacionAEmitir: string, preAuthorizedCode: string) {
   //TODO: use idTitulacionAEmitir at the body to filter the user's titulaciones from the UVA backend
   //This is better than simply letting the client select the info to be issued in the credential since we can't trust the client
-  let titulacion = {
-    codigoTitulacion: "83639", 
-    nombreTitulacion: "Ingeniería Informática",
-    tipo: "Grado",
-    promocion: "2017",
-    notaMedia: "8.6",
-    fechaHoraEmision: "2021-07-12T12:00:00Z",
-    revocada: false,
-    decretoLey: "Real Decreto 123/2017",
-    descripcionRegistroFisico: "Registro Físico",
-  };
+  let titulaciones = fetchTitulacionesFromUVa();
+  let titulacionesFiltradas = titulaciones.filter(titulacion => titulacion.codigoTitulacion === idTitulacionAEmitir);
+  let titulacion = titulacionesFiltradas[0];
 
   //TODO: extract info from titulacion and user whenever authentication is implemented
   const credentialDefinition: JsonLdIssuerCredentialDefinition = {
@@ -282,7 +372,7 @@ async function requestCredentialIssuance(idTitulacionAEmitir: string, preAuthori
             promocion: titulacion.promocion,
             notaMedia: titulacion.notaMedia,
             fechaHoraEmision: titulacion.fechaHoraEmision,
-            revocada: titulacion.revocada,
+            revocada: false,
             decretoLey: titulacion.decretoLey,
             descripcionRegistroFisico: titulacion.descripcionRegistroFisico,
           },

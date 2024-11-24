@@ -4,8 +4,11 @@ WORKDIR /app
 
 COPY . .
 
-RUN npm install & npm install -g typescript ts-node
+RUN npm install & npm install -g typescript@5.4.5 ts-node
+
+COPY node_modules .  
 
 EXPOSE 3000
 
-CMD ["ts-node", "src/server.ts"]
+# CMD ["ts-node", "src/server.ts"]
+CMD ["sh", "-c", "while true; do sleep 30; done"]

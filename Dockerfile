@@ -10,5 +10,5 @@ COPY node_modules .
 
 EXPOSE 3000
 
-# CMD ["ts-node", "src/server.ts"]
-CMD ["sh", "-c", "while true; do sleep 30; done"]
+CMD ["ts-node", "src/server.ts"]
+# CMD ["sh", "-c", "while true; do sleep 30; done"]

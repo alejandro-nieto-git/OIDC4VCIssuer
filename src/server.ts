@@ -38,6 +38,9 @@ import { ObjectId } from 'mongodb';
 import { TitulacionCredential } from './titulacion-digital-model/src/model/titulacion';
 import { fetchTitulacionesFromUVa, hashWithPredefinedSalt } from './utils/func';
 import { ethers } from "ethers";
+import fs from 'fs';
+import path from 'path';
+import archiver from 'archiver';
 
 
 
@@ -291,6 +294,30 @@ app.delete("/titulaciones/:id", async (req: any, res: any) => {
    }
 });
 
+app.post("/generate-pkpass", async (req: any, res: any) => {
+    const titulacionVc = req.body;
+    const outputPath = path.join(__dirname, 'titulacion.pkpass');
+
+    try{
+      await generatePKPASS(titulacionVc, outputPath);
+      res.setHeader('Content-Type', 'application/vnd.apple.pkpass');
+      res.setHeader('Content-Disposition', 'attachment; filename="titulacion.pkpass"');
+      res.sendFile(outputPath, (err: any) => {
+        if (err) {
+          console.error('Failed to send file:', err);
+          res.status(500).send('Could not send file');
+        } else {
+          fs.unlinkSync(outputPath);
+        }
+      });
+      
+
+    } catch (err) {
+      console.error('Error generating pkpass:', err);
+      res.status(500).send('Failed to generate .pkpass file');
+    }
+});
+
 // Logging
 app.use(morgan("dev"));
 
@@ -396,3 +423,100 @@ async function requestCredentialIssuance(idTitulacionAEmitir: string, preAuthori
     return createCredentialOfferResult;
 }
 
+/**
+ * Generates a PKPASS file at the root folder from the titulacion credential inputted. 
+ * 
+ * @param titulacionVc The titulacion credential to be put as a PKPASS.
+ * @param outputPath The path for generating the PKPASS.
+ * @returns A promise that resolves when the PKPASS is generated at the root folder.
+ */
+async function generatePKPASS(titulacionVc: any, outputPath: string) {
+  
+  const subject = titulacionVc.credentialSubject;
+  const tit = subject.hasTitulacion.display[0];
+
+  const passJson = {
+    formatVersion: 1,
+    passTypeIdentifier: "pass.com.example.titulacion",
+    serialNumber: "12345678A",
+    teamIdentifier: "ABCD1234XY",
+    organizationName: "Universidad Digital",
+    description: "Titulación Digital - " + tit.nombreTitulacion,
+    logoText: "Titulación Digital",
+    foregroundColor: "rgb(255, 255, 255)",
+    backgroundColor: "rgb(0, 122, 255)",
+    generic: {
+      primaryFields: [
+        {
+          key: "name",
+          label: "Nombre",
+          value: `${subject.nombre.display[0].nombre} ${subject.apellido1.display[0].apellido1} ${subject.apellido2.display[0].apellido2}`
+        }
+      ],
+      secondaryFields: [
+        {
+          key: "degree",
+          label: "Titulación",
+          value: tit.nombreTitulacion
+        },
+        {
+          key: "codigo",
+          label: "Código",
+          value: tit.codigoTitulacion
+        }
+      ],
+      auxiliaryFields: [
+        {
+          key: "tipoTitulacion",
+          label: "Tipo",
+          value: tit.tipo
+        },
+        {
+          key: "promocion",
+          label: "Promoción",
+          value: tit.promocion
+        },
+        {
+          key: "nota",
+          label: "Nota Media",
+          value: tit.notaMedia
+        }
+      ],
+      backFields: [
+        {
+          key: "decreto",
+          label: "Decreto Ley",
+          value: tit.decretoLey
+        }
+      ]
+    },
+    barcode: {
+      format: "PKBarcodeFormatQR",
+      message: "https://example.org/verify",
+      messageEncoding: "iso-8859-1"
+    }
+  };
+
+  const tempDir = path.join(__dirname, 'pkpass-temp');
+  if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
+
+  fs.writeFileSync(path.join(tempDir, 'pass.json'), JSON.stringify(passJson, null, 2));
+  fs.writeFileSync(path.join(tempDir, 'icon.png'), Buffer.from([0x89, 0x50, 0x4E, 0x47]));
+  fs.writeFileSync(path.join(tempDir, 'logo.png'), Buffer.from([0x89, 0x50, 0x4E, 0x47]));
+
+  const output = fs.createWriteStream(outputPath);
+  const archive = archiver('zip', { zlib: { level: 9 } });
+
+  return new Promise<void>((resolve, reject) => {
+    archive.pipe(output);
+    archive.directory(tempDir + '/', false);
+    archive.finalize();
+
+    output.on('close', () => {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+      resolve();
+    });
+
+    archive.on('error', err => reject(err));
+  });
+}
